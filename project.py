@@ -1,10 +1,14 @@
 from flask import Flask, render_template, request, redirect, jsonify, \
-                  url_for, flash
+                  url_for, flash, make_response
 from sqlalchemy import create_engine, asc
 from sqlalchemy.orm import sessionmaker
 from database_setup import Base, Restaurant, MenuItem
 from flask import session as login_session
 import random, string
+from oauth2client.client import flow_from_clientsecrets
+from oauth2client.client import FlowExchangeError
+import json
+import requests
 
 app = Flask(__name__)
 #Connect to Database and create database session
@@ -20,7 +24,7 @@ def showLogin():
     state = ''.join(random.choice(string.ascii_uppercase + string.digits)
                     for x in xrange(32))
     login_session['state'] = state
-    return 'The current session state is %s' % (login_session['state'])
+    return render_template('login.html')
 
 
 #JSON APIs to view Restaurant Information
@@ -147,6 +151,29 @@ def deleteMenuItem(restaurant_id,menu_id):
         return redirect(url_for('showMenu', restaurant_id = restaurant_id))
     else:
         return render_template('deleteMenuItem.html', item = itemToDelete)
+
+
+@app.route('/gconnect', methods=['POST'])
+def gconnect():
+    if request.args.get('state') != login_session['state']:
+        response = make_response(json.dumps('Invalid state parameter'), 401)
+        response.headers['Content-Type'] = 'application/json'
+        return response
+    code = request.data
+    try:
+        oauth_flow = flow_from_clientsecrets('client_secrets.json')
+        oauth_flow.redirect_uri = 'postmessage'
+        credentials = oauth_flow.step2_exchange(code)
+    except FlowExchangeError:
+        response = make_response(
+            json.dumps('Failed to upgrade the authorization code.'), 401)
+        response.headers['Content-Type'] = 'application/json'
+        return response
+    access_token = credentials.access_token
+    url = 'https://www.googleapis.com/oauth2/v1/tokeninfo?access_token=%s' % (
+        access_token)
+    r = requests.get(url)
+    result = json.loads(r.text)
 
 
 if __name__ == '__main__':

@@ -1,3 +1,4 @@
 restaurantmenu.db
 .vagrant/
 *.pyc
+client_secrets.json
