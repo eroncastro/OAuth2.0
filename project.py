@@ -7,9 +7,13 @@ from flask import session as login_session
 import random, string
 from oauth2client.client import flow_from_clientsecrets
 from oauth2client.client import FlowExchangeError
+import httplib2
 import json
 import requests
 
+
+CLIENT_ID = json.loads(
+    open('client_secrets.json', 'r').read())['web']['client_id']
 app = Flask(__name__)
 #Connect to Database and create database session
 engine = create_engine('sqlite:///restaurantmenu.db')
@@ -24,7 +28,7 @@ def showLogin():
     state = ''.join(random.choice(string.ascii_uppercase + string.digits)
                     for x in xrange(32))
     login_session['state'] = state
-    return render_template('login.html')
+    return render_template('login.html', STATE=state)
 
 
 #JSON APIs to view Restaurant Information
@@ -156,12 +160,13 @@ def deleteMenuItem(restaurant_id,menu_id):
 @app.route('/gconnect', methods=['POST'])
 def gconnect():
     if request.args.get('state') != login_session['state']:
+        print('opa')
         response = make_response(json.dumps('Invalid state parameter'), 401)
         response.headers['Content-Type'] = 'application/json'
         return response
     code = request.data
     try:
-        oauth_flow = flow_from_clientsecrets('client_secrets.json')
+        oauth_flow = flow_from_clientsecrets('client_secrets.json', scope='openid')
         oauth_flow.redirect_uri = 'postmessage'
         credentials = oauth_flow.step2_exchange(code)
     except FlowExchangeError:
@@ -172,8 +177,49 @@ def gconnect():
     access_token = credentials.access_token
     url = 'https://www.googleapis.com/oauth2/v1/tokeninfo?access_token=%s' % (
         access_token)
-    r = requests.get(url)
-    result = json.loads(r.text)
+    h = httplib2.Http()
+    result = json.loads(h.request(url, 'GET')[1])
+    if result.get('error') is not None:
+        response = make_response(json.dumps(result.get('error')), 500)
+        response.headers['Content-Type'] = 'application/json'
+    gplus_id = credentials.id_token['sub']
+    if result['user_id'] != gplus_id:
+        response = make_response(
+            json.dumps('Token user id token does not match given user ID'),
+            401)
+        response.headers['Content-Type'] = 'application/json'
+        return response
+    if result['issued_to'] != CLIENT_ID:
+        response = make_response(
+            json.dumps('Token client ID does not match app client id'), 401)
+        response.headers['Content-Type'] = 'application/json'
+        return response
+    if (login_session.get('credentials')
+        and login_session.get('gplus_id') == gplus_id):
+        response = make_response(json.dumps(
+            'Current user is already connected'), 200)
+        response.headers['Content-Type'] = 'application/json'
+        return response
+
+    login_session['credentials'] = credentials
+    login_session['gplus_id'] = gplus_id
+
+    userinfo_url = 'https://www.googleapis.com/oauth2/v1/userinfo'
+    params = {'access_token': credentials.access_token, 'alt': 'json'}
+    answer = request.get(userinfo_url, params=params)
+    data = json.loads(answer.text)
+
+    login_session['username'] = data['name']
+    login_session['picture'] = data['picture']
+    login_session['email'] = data['email']
+
+    output = ''
+    output += '<h1>Welcome, %s!</h1>' % login_session['username']
+    output += '<img src="'
+    output += login_session['picture']
+    output += ' " style = "width: 300px; height: 300px;border-radius: 150px;-webkit-border-radius: 150px;-moz-border-radius: 150px;"> '
+    flash("you are now logged in as %s" % login_session['username'])
+    return output
 
 
 if __name__ == '__main__':
