@@ -160,16 +160,16 @@ def deleteMenuItem(restaurant_id,menu_id):
 @app.route('/gconnect', methods=['POST'])
 def gconnect():
     if request.args.get('state') != login_session['state']:
-        print('opa')
         response = make_response(json.dumps('Invalid state parameter'), 401)
         response.headers['Content-Type'] = 'application/json'
         return response
     code = request.data
     try:
-        oauth_flow = flow_from_clientsecrets('client_secrets.json', scope='openid')
+        oauth_flow = flow_from_clientsecrets(
+          'client_secrets.json', scope='openid')
         oauth_flow.redirect_uri = 'postmessage'
         credentials = oauth_flow.step2_exchange(code)
-    except FlowExchangeError:
+    except FlowExchangeError as e:
         response = make_response(
             json.dumps('Failed to upgrade the authorization code.'), 401)
         response.headers['Content-Type'] = 'application/json'
@@ -179,6 +179,7 @@ def gconnect():
         access_token)
     h = httplib2.Http()
     result = json.loads(h.request(url, 'GET')[1])
+
     if result.get('error') is not None:
         response = make_response(json.dumps(result.get('error')), 500)
         response.headers['Content-Type'] = 'application/json'
@@ -203,10 +204,9 @@ def gconnect():
 
     login_session['credentials'] = credentials
     login_session['gplus_id'] = gplus_id
-
     userinfo_url = 'https://www.googleapis.com/oauth2/v1/userinfo'
     params = {'access_token': credentials.access_token, 'alt': 'json'}
-    answer = request.get(userinfo_url, params=params)
+    answer = requests.get(userinfo_url, params=params)
     data = json.loads(answer.text)
 
     login_session['username'] = data['name']
