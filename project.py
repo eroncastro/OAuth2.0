@@ -10,6 +10,7 @@ from oauth2client.client import FlowExchangeError
 import httplib2
 import json
 import requests
+from functools import wraps
 
 
 CLIENT_ID = json.loads(
@@ -22,6 +23,15 @@ Base.metadata.bind = engine
 DBSession = sessionmaker(bind=engine)
 session = DBSession()
 
+def check_login(f):
+    @wraps(f)
+    def wrapper(*args, **kwargs):
+        print('calling decorator')
+        if 'username' not in login_session:
+            return redirect('/login')
+        return f(*args, **kwargs)
+    return wrapper
+
 
 @app.route('/login')
 def showLogin():
@@ -33,6 +43,7 @@ def showLogin():
 
 #JSON APIs to view Restaurant Information
 @app.route('/restaurant/<int:restaurant_id>/menu/JSON')
+@check_login
 def restaurantMenuJSON(restaurant_id):
     restaurant = session.query(Restaurant).filter_by(id = restaurant_id).one()
     items = session.query(MenuItem).filter_by(restaurant_id = restaurant_id).all()
@@ -40,12 +51,14 @@ def restaurantMenuJSON(restaurant_id):
 
 
 @app.route('/restaurant/<int:restaurant_id>/menu/<int:menu_id>/JSON')
+@check_login
 def menuItemJSON(restaurant_id, menu_id):
     Menu_Item = session.query(MenuItem).filter_by(id = menu_id).one()
     return jsonify(Menu_Item = Menu_Item.serialize)
 
 
 @app.route('/restaurant/JSON')
+@check_login
 def restaurantsJSON():
     restaurants = session.query(Restaurant).all()
     return jsonify(restaurants= [r.serialize for r in restaurants])
@@ -54,6 +67,7 @@ def restaurantsJSON():
 #Show all restaurants
 @app.route('/')
 @app.route('/restaurant/')
+@check_login
 def showRestaurants():
   restaurants = session.query(Restaurant).order_by(asc(Restaurant.name))
   return render_template('restaurants.html', restaurants = restaurants)
@@ -61,6 +75,7 @@ def showRestaurants():
 
 #Create a new restaurant
 @app.route('/restaurant/new/', methods=['GET','POST'])
+@check_login
 def newRestaurant():
   if request.method == 'POST':
       newRestaurant = Restaurant(name = request.form['name'])
@@ -74,6 +89,7 @@ def newRestaurant():
 
 #Edit a restaurant
 @app.route('/restaurant/<int:restaurant_id>/edit/', methods = ['GET', 'POST'])
+@check_login
 def editRestaurant(restaurant_id):
   editedRestaurant = session.query(Restaurant).filter_by(id = restaurant_id).one()
   if request.method == 'POST':
@@ -87,6 +103,7 @@ def editRestaurant(restaurant_id):
 
 #Delete a restaurant
 @app.route('/restaurant/<int:restaurant_id>/delete/', methods = ['GET','POST'])
+@check_login
 def deleteRestaurant(restaurant_id):
   restaurantToDelete = session.query(Restaurant).filter_by(id = restaurant_id).one()
   if request.method == 'POST':
@@ -100,6 +117,7 @@ def deleteRestaurant(restaurant_id):
 
 #Show a restaurant menu
 @app.route('/restaurant/<int:restaurant_id>/')
+@check_login
 @app.route('/restaurant/<int:restaurant_id>/menu/')
 def showMenu(restaurant_id):
     restaurant = session.query(Restaurant).filter_by(id = restaurant_id).one()
@@ -109,6 +127,7 @@ def showMenu(restaurant_id):
 
 #Create a new menu item
 @app.route('/restaurant/<int:restaurant_id>/menu/new/',methods=['GET','POST'])
+@check_login
 def newMenuItem(restaurant_id):
   restaurant = session.query(Restaurant).filter_by(id = restaurant_id).one()
   if request.method == 'POST':
@@ -123,6 +142,7 @@ def newMenuItem(restaurant_id):
 
 #Edit a menu item
 @app.route('/restaurant/<int:restaurant_id>/menu/<int:menu_id>/edit', methods=['GET','POST'])
+@check_login
 def editMenuItem(restaurant_id, menu_id):
     editedItem = session.query(MenuItem).filter_by(id = menu_id).one()
     restaurant = session.query(Restaurant).filter_by(id = restaurant_id).one()
@@ -145,6 +165,7 @@ def editMenuItem(restaurant_id, menu_id):
 
 #Delete a menu item
 @app.route('/restaurant/<int:restaurant_id>/menu/<int:menu_id>/delete', methods = ['GET','POST'])
+@check_login
 def deleteMenuItem(restaurant_id,menu_id):
     restaurant = session.query(Restaurant).filter_by(id = restaurant_id).one()
     itemToDelete = session.query(MenuItem).filter_by(id = menu_id).one()
